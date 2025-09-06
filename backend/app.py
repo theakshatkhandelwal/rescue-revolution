@@ -91,43 +91,57 @@ def load_user(user_id):
 # Authentication routes
 @app.route('/api/auth/register', methods=['POST'])
 def register():
-    data = request.get_json()
-    
-    if User.query.filter_by(username=data['username']).first():
-        return jsonify({'error': 'Username already exists'}), 400
-    
-    if User.query.filter_by(email=data['email']).first():
-        return jsonify({'error': 'Email already exists'}), 400
-    
-    user = User(
-        username=data['username'],
-        email=data['email'],
-        password_hash=generate_password_hash(data['password'])
-    )
-    
-    db.session.add(user)
-    db.session.commit()
-    
-    return jsonify({'message': 'User registered successfully'}), 201
+    try:
+        data = request.get_json()
+        
+        if not data or not all(key in data for key in ['username', 'email', 'password']):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        if User.query.filter_by(username=data['username']).first():
+            return jsonify({'error': 'Username already exists'}), 400
+        
+        if User.query.filter_by(email=data['email']).first():
+            return jsonify({'error': 'Email already exists'}), 400
+        
+        user = User(
+            username=data['username'],
+            email=data['email'],
+            password_hash=generate_password_hash(data['password'])
+        )
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        return jsonify({'message': 'User registered successfully'}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Registration failed: {str(e)}'}), 500
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    user = User.query.filter_by(username=data['username']).first()
-    
-    if user and check_password_hash(user.password_hash, data['password']):
-        login_user(user)
-        return jsonify({
-            'message': 'Login successful',
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email,
-                'is_admin': user.is_admin
-            }
-        })
-    
-    return jsonify({'error': 'Invalid credentials'}), 401
+    try:
+        data = request.get_json()
+        
+        if not data or not all(key in data for key in ['username', 'password']):
+            return jsonify({'error': 'Missing username or password'}), 400
+        
+        user = User.query.filter_by(username=data['username']).first()
+        
+        if user and check_password_hash(user.password_hash, data['password']):
+            login_user(user)
+            return jsonify({
+                'message': 'Login successful',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'is_admin': user.is_admin
+                }
+            })
+        
+        return jsonify({'error': 'Invalid credentials'}), 401
+    except Exception as e:
+        return jsonify({'error': f'Login failed: {str(e)}'}), 500
 
 @app.route('/api/auth/logout', methods=['POST'])
 @login_required
@@ -458,6 +472,16 @@ def search_incidents():
         'created_at': incident.created_at.isoformat(),
         'reporter': incident.reporter.username
     } for incident in incidents])
+
+# Database initialization route
+@app.route('/api/init-db', methods=['POST'])
+def init_db():
+    try:
+        with app.app_context():
+            db.create_all()
+        return jsonify({'message': 'Database initialized successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': f'Database initialization failed: {str(e)}'}), 500
 
 # Serve uploaded images
 @app.route('/uploads/<filename>')

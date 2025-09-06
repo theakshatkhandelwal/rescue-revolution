@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Heart, PawPrint, AlertTriangle, Users, Home, Phone, Mail } from 'lucide-react';
+import { Heart, PawPrint, AlertTriangle, Users, Phone, Mail } from 'lucide-react';
 
 const Home = () => {
   const features = [

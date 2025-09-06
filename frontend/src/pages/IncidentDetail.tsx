@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Incident } from '../types';
-import { MapPin, Calendar, User, Phone, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { MapPin, Phone, AlertTriangle, ArrowLeft } from 'lucide-react';
 
 const IncidentDetail = () => {
   const { id } = useParams<{ id: string }>();

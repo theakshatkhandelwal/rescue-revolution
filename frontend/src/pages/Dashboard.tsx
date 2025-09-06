@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { Pet, Incident } from '../types';
-import { Plus, PawPrint, AlertTriangle, User, Calendar, MapPin } from 'lucide-react';
+import { Plus, PawPrint, AlertTriangle, MapPin } from 'lucide-react';
 
 const Dashboard = () => {
   const { user } = useAuth();

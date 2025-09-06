@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { motion } from 'framer-motion';
-import { PawPrint, Upload, X } from 'lucide-react';
+import { PawPrint, Upload } from 'lucide-react';
 
 const AddPet = () => {
   const [formData, setFormData] = useState({

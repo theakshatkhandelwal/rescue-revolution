@@ -473,6 +473,25 @@ def search_incidents():
         'reporter': incident.reporter.username
     } for incident in incidents])
 
+# Database connection test route
+@app.route('/api/test-db', methods=['GET'])
+def test_db():
+    try:
+        # Test database connection
+        with db.engine.connect() as connection:
+            connection.execute(db.text('SELECT 1'))
+        return jsonify({
+            'status': 'success',
+            'message': 'Database connection successful',
+            'database_url': app.config['SQLALCHEMY_DATABASE_URI'][:50] + '...'  # Hide sensitive info
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Database connection failed: {str(e)}',
+            'database_url': app.config['SQLALCHEMY_DATABASE_URI'][:50] + '...'  # Hide sensitive info
+        }), 500
+
 # Database initialization route
 @app.route('/api/init-db', methods=['POST'])
 def init_db():

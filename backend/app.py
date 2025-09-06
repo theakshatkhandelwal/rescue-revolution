@@ -493,12 +493,22 @@ def test_db():
         }), 500
 
 # Database initialization route
-@app.route('/api/init-db', methods=['POST'])
+@app.route('/api/init-db', methods=['POST', 'GET'])
 def init_db():
     try:
         with app.app_context():
+            # Create all tables
             db.create_all()
-        return jsonify({'message': 'Database initialized successfully'}), 200
+            
+            # Verify tables were created
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            
+        return jsonify({
+            'message': 'Database initialized successfully',
+            'tables_created': tables
+        }), 200
     except Exception as e:
         return jsonify({'error': f'Database initialization failed: {str(e)}'}), 500
 

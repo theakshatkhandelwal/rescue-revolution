@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { motion } from 'framer-motion';
-import { PawPrint, Upload } from 'lucide-react';
+import { PawPrint, Upload, Camera, X, Navigation } from 'lucide-react';
 
 const AddPet = () => {
   const [formData, setFormData] = useState({
@@ -17,12 +17,121 @@ const AddPet = () => {
     status: 'available'
   });
   const [loading, setLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [gettingLocation, setGettingLocation] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   
   const { showToast } = useToast();
   const navigate = useNavigate();
 
   const speciesOptions = ['dog', 'cat', 'bird', 'rabbit', 'hamster', 'fish', 'other'];
   const statusOptions = ['available', 'adopted', 'lost'];
+
+  const handleImageUpload = (file: File) => {
+    if (file && file.type.startsWith('image/')) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setSelectedImage(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      showToast('Please select a valid image file', 'error');
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+  };
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+  };
+
+  const removeImage = () => {
+    setSelectedImage(null);
+    setImageFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+  };
+
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      showToast('Geolocation is not supported by this browser', 'error');
+      return;
+    }
+
+    setGettingLocation(true);
+    
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          
+          // Use reverse geocoding to get address
+          const response = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            const address = formatAddress(data);
+            setFormData(prev => ({
+              ...prev,
+              location: address
+            }));
+            showToast('Location detected successfully!', 'success');
+          } else {
+            throw new Error('Failed to get address');
+          }
+        } catch (error) {
+          showToast('Failed to get address from coordinates', 'error');
+        } finally {
+          setGettingLocation(false);
+        }
+      },
+      (error) => {
+        let errorMessage = 'Failed to get location';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location access denied by user';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information unavailable';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out';
+            break;
+        }
+        showToast(errorMessage, 'error');
+        setGettingLocation(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000
+      }
+    );
+  };
+
+  const formatAddress = (data: any) => {
+    const parts = [];
+    
+    if (data.locality) parts.push(data.locality);
+    if (data.city) parts.push(data.city);
+    if (data.principalSubdivision) parts.push(data.principalSubdivision);
+    if (data.postcode) parts.push(data.postcode);
+    
+    return parts.join(', ');
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({
@@ -36,16 +145,26 @@ const AddPet = () => {
     setLoading(true);
 
     try {
+      const formDataToSend = new FormData();
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('species', formData.species);
+      formDataToSend.append('breed', formData.breed);
+      formDataToSend.append('age', formData.age ? formData.age : '');
+      formDataToSend.append('description', formData.description);
+      formDataToSend.append('location', formData.location);
+      formDataToSend.append('contact_info', formData.contact_info);
+      formDataToSend.append('status', formData.status);
+      
+      if (imageFile) {
+        formDataToSend.append('image', imageFile);
+      } else if (formData.image_url) {
+        formDataToSend.append('image_url', formData.image_url);
+      }
+
       const response = await fetch('/api/pets', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         credentials: 'include',
-        body: JSON.stringify({
-          ...formData,
-          age: formData.age ? parseInt(formData.age) : null
-        }),
+        body: formDataToSend,
       });
 
       if (response.ok) {
@@ -172,26 +291,80 @@ const AddPet = () => {
             </div>
 
             <div>
-              <label htmlFor="image_url" className="block text-sm font-medium text-gray-700 mb-2">
-                Image URL
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pet Photo
               </label>
-              <div className="relative">
-                <input
-                  id="image_url"
-                  name="image_url"
-                  type="url"
-                  value={formData.image_url}
-                  onChange={handleChange}
-                  className="input-field pr-10"
-                  placeholder="https://example.com/pet-image.jpg"
-                />
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                  <Upload className="h-5 w-5 text-gray-400" />
+              
+              {selectedImage ? (
+                <div className="relative">
+                  <img
+                    src={selectedImage}
+                    alt="Selected pet"
+                    className="w-full h-64 object-cover rounded-lg border border-gray-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={removeImage}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Provide a direct link to the pet's photo
-              </p>
+              ) : (
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                  <div className="space-y-4">
+                    <div className="flex justify-center space-x-4">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                      >
+                        <Upload className="w-5 h-5" />
+                        <span>Upload Photo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => cameraInputRef.current?.click()}
+                        className="flex items-center space-x-2 px-4 py-2 bg-secondary-600 text-white rounded-lg hover:bg-secondary-700 transition-colors"
+                      >
+                        <Camera className="w-5 h-5" />
+                        <span>Take Photo</span>
+                      </button>
+                    </div>
+                    <p className="text-sm text-gray-500">or</p>
+                    <div className="relative">
+                      <input
+                        type="url"
+                        name="image_url"
+                        value={formData.image_url}
+                        onChange={handleChange}
+                        className="input-field"
+                        placeholder="Enter image URL"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Provide a direct link to the pet's photo
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Hidden file inputs */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileInputChange}
+                className="hidden"
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleCameraCapture}
+                className="hidden"
+              />
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
@@ -199,15 +372,33 @@ const AddPet = () => {
                 <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
                   Location
                 </label>
-                <input
-                  id="location"
-                  name="location"
-                  type="text"
-                  value={formData.location}
-                  onChange={handleChange}
-                  className="input-field"
-                  placeholder="City, State"
-                />
+                <div className="relative">
+                  <input
+                    id="location"
+                    name="location"
+                    type="text"
+                    value={formData.location}
+                    onChange={handleChange}
+                    className="input-field pr-12"
+                    placeholder="City, State, Pincode"
+                  />
+                  <button
+                    type="button"
+                    onClick={getCurrentLocation}
+                    disabled={gettingLocation}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-primary-600 hover:text-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Get current location"
+                  >
+                    {gettingLocation ? (
+                      <div className="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Navigation className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Click the navigation icon to auto-detect your location
+                </p>
               </div>
 
               <div>

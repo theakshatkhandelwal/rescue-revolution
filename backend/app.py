@@ -3,12 +3,18 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from datetime import datetime
 import os
+import uuid
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+try:
+    load_dotenv()
+except:
+    # If .env file has encoding issues, set defaults
+    pass
 
 app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -20,6 +26,18 @@ if database_url.startswith('postgres://'):
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# File upload configuration
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# Create upload directory if it doesn't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Initialize extensions
 db = SQLAlchemy(app)
@@ -147,18 +165,43 @@ def get_pets():
 @app.route('/api/pets', methods=['POST'])
 @login_required
 def create_pet():
-    data = request.get_json()
+    # Handle file upload
+    image_url = None
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and file.filename and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            # Generate unique filename
+            unique_filename = f"{uuid.uuid4()}_{filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(filepath)
+            image_url = f"/uploads/{unique_filename}"
+    elif 'image_url' in request.form and request.form['image_url']:
+        image_url = request.form['image_url']
+    
+    # Get form data
+    name = request.form.get('name')
+    species = request.form.get('species')
+    breed = request.form.get('breed')
+    age = request.form.get('age')
+    description = request.form.get('description')
+    location = request.form.get('location')
+    contact_info = request.form.get('contact_info')
+    status = request.form.get('status', 'available')
+    
+    if not name or not species:
+        return jsonify({'error': 'Name and species are required'}), 400
     
     pet = Pet(
-        name=data['name'],
-        species=data['species'],
-        breed=data.get('breed'),
-        age=data.get('age'),
-        description=data.get('description'),
-        image_url=data.get('image_url'),
-        status=data.get('status', 'available'),
-        location=data.get('location'),
-        contact_info=data.get('contact_info'),
+        name=name,
+        species=species,
+        breed=breed,
+        age=int(age) if age else None,
+        description=description,
+        image_url=image_url,
+        status=status,
+        location=location,
+        contact_info=contact_info,
         user_id=current_user.id
     )
     
@@ -413,6 +456,11 @@ def search_incidents():
         'created_at': incident.created_at.isoformat(),
         'reporter': incident.reporter.username
     } for incident in incidents])
+
+# Serve uploaded images
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # Serve React app
 @app.route('/')

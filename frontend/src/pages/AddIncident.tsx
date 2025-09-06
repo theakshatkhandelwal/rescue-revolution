@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { motion } from 'framer-motion';
-import { AlertTriangle, MapPin, Phone } from 'lucide-react';
+import { AlertTriangle, MapPin, Phone, Navigation } from 'lucide-react';
 
 const AddIncident = () => {
   const [formData, setFormData] = useState({
@@ -13,6 +13,7 @@ const AddIncident = () => {
     contact_info: ''
   });
   const [loading, setLoading] = useState(false);
+  const [gettingLocation, setGettingLocation] = useState(false);
   
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -29,6 +30,76 @@ const AddIncident = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
+  };
+
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      showToast('Geolocation is not supported by this browser', 'error');
+      return;
+    }
+
+    setGettingLocation(true);
+    
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          
+          // Use reverse geocoding to get address
+          const response = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            const address = formatAddress(data);
+            setFormData(prev => ({
+              ...prev,
+              location: address
+            }));
+            showToast('Location detected successfully!', 'success');
+          } else {
+            throw new Error('Failed to get address');
+          }
+        } catch (error) {
+          showToast('Failed to get address from coordinates', 'error');
+        } finally {
+          setGettingLocation(false);
+        }
+      },
+      (error) => {
+        let errorMessage = 'Failed to get location';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location access denied by user';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information unavailable';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out';
+            break;
+        }
+        showToast(errorMessage, 'error');
+        setGettingLocation(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000
+      }
+    );
+  };
+
+  const formatAddress = (data: any) => {
+    const parts = [];
+    
+    if (data.locality) parts.push(data.locality);
+    if (data.city) parts.push(data.city);
+    if (data.principalSubdivision) parts.push(data.principalSubdivision);
+    if (data.postcode) parts.push(data.postcode);
+    
+    return parts.join(', ');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -148,10 +219,26 @@ const AddIncident = () => {
                   required
                   value={formData.location}
                   onChange={handleChange}
-                  className="input-field pl-10"
-                  placeholder="Street address, city, or general area"
+                  className="input-field pl-10 pr-12"
+                  placeholder="Street address, city, pincode"
                 />
+                <button
+                  type="button"
+                  onClick={getCurrentLocation}
+                  disabled={gettingLocation}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-primary-600 hover:text-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Get current location"
+                >
+                  {gettingLocation ? (
+                    <div className="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Navigation className="w-5 h-5" />
+                  )}
+                </button>
               </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Click the navigation icon to auto-detect your location
+              </p>
             </div>
 
             <div>
